@@ -1,5 +1,5 @@
 {
-  "name": "remote-print-kit",
+  "name": "remote-print-technology",
   "version": "0.1.0",
   "description": "Reference implementation for private, time-leased remote printing over Epson Connect API v2 with Cashfree payments.",
   "type": "module",

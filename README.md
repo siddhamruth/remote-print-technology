@@ -1,4 +1,4 @@
-# remote-print-kit
+# Remote Print Technology
 
 **How to let a stranger on the internet print to your printer, privately, for exactly 15 minutes, only after they've paid.**
 
@@ -124,7 +124,7 @@ Job IDs come from the database. The server never trusts a `jobId` sent by the br
 ## Getting started
 
 ```bash
-git clone https://github.com/siddhamruth/remote-print-kit && cd remote-print-kit
+git clone https://github.com/siddhamruth/remote-print-technology && cd remote-print-technology
 npm test                     # unit tests, no network or DB needed
 cp .env.example .env         # fill in Epson + Cashfree sandbox keys
 ```
