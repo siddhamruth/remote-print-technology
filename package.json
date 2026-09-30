@@ -1,0 +1,21 @@
+{
+  "name": "remote-print-kit",
+  "version": "0.1.0",
+  "description": "Reference implementation for private, time-leased remote printing over Epson Connect API v2 with Cashfree payments.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "exports": {
+    "./epson": "./src/epson/client.js",
+    "./epson/token-store": "./src/epson/token-store.js",
+    "./lease": "./src/lease/slots.js",
+    "./payments/cashfree": "./src/payments/cashfree.js",
+    "./session": "./src/session/print-session.js",
+    "./privacy": "./src/privacy/erase.js",
+    "./browser": "./src/browser/render.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "keywords": ["epson-connect", "remote-printing", "cashfree", "nextjs", "prisma", "privacy"]
+}

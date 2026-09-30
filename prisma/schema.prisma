@@ -1,0 +1,95 @@
+// Reference schema for a remote-print service (Prisma 7, PostgreSQL). DB URL lives in prisma.config.js.
+// All instants are stored as timestamptz (UTC). Convert to local time only for display.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Slot {
+  id            Int      @id @default(autoincrement())
+  startsAt      DateTime @unique @db.Timestamptz(3)
+  endsAt        DateTime @db.Timestamptz(3)
+  isAvailable   Boolean  @default(true)
+  heldUntil     DateTime? @db.Timestamptz(3)
+  heldByOrderId Int?
+  orders        Order[]
+
+  @@index([startsAt, isAvailable])
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum OrderStatus {
+  CREATED
+  PAID
+  SESSION_OPEN
+  PRINTING
+  PRINT_COMPLETE
+  PRINT_FAILED
+  SHIPPED
+  DELIVERED
+  SLOT_LOST // paid after hold expired and slot was taken: refund or rebook
+  SLOT_MISSED
+  PAYMENT_FAILED
+}
+
+model Order {
+  id              Int           @id @default(autoincrement())
+  publicId        String        @unique // short id shown to the customer; NOT an access credential
+  slotId          Int?
+  slot            Slot?         @relation(fields: [slotId], references: [id], onDelete: SetNull)
+  product         String
+  quantity        Int
+  pricePaise      Int
+  paymentStatus   PaymentStatus @default(PENDING)
+  cfOrderId       String?       @unique
+  status          OrderStatus   @default(CREATED)
+  // PII: nullable so it can be erased after delivery.
+  customerName    String?
+  customerEmail   String?
+  customerPhone   String?
+  shippingAddress Json?
+  deliveredAt     DateTime?     @db.Timestamptz(3)
+  piiErasedAt     DateTime?     @db.Timestamptz(3)
+  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
+  session         PrintSession?
+}
+
+model PrintSession {
+  id             Int        @id @default(autoincrement())
+  orderId        Int        @unique
+  order          Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  tokenHash      String     @unique // sha256 of the emailed token
+  opensAt        DateTime   @db.Timestamptz(3)
+  expiresAt      DateTime   @db.Timestamptz(3)
+  printClaimedAt DateTime?  @db.Timestamptz(3)
+  jobs           PrintJob[]
+}
+
+// Epson Connect: one uploaded file per job, so N photos = N jobs.
+model PrintJob {
+  id         Int          @id @default(autoincrement())
+  sessionId  Int
+  session    PrintSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  fileIndex  Int
+  epsonJobId String       @unique
+  status     String       @default("uploaded") // mirrors Epson job status after print
+  updatedAt  DateTime     @updatedAt @db.Timestamptz(3)
+
+  @@unique([sessionId, fileIndex])
+}
+
+model PrinterCredential {
+  id           String   @id
+  deviceToken  String
+  refreshToken String
+  expiresAt    DateTime @db.Timestamptz(3)
+}
