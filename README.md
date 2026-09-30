@@ -4,6 +4,22 @@
 
 This is the reference architecture behind [shhhh.in](https://shhhh.in), a private photo and document printing service in India. Customers book a 15-minute window on a physical Epson EcoTank printer, pay, and press **PRINT** themselves from their browser. Their files never touch a disk, and no staff member ever opens them.
 
+## Your photos never touch our disk
+
+| Data | Where it goes | How long |
+|---|---|---|
+| **Your photos** | Browser → our server's **memory** (one HTTPS request per photo) → Epson Connect → printer | Our server keeps them only for the length of the upload request. Nothing is written to disk, a database, logs or backups |
+| Print job ID + status (`completed`) | Our database (`PrintJob` table: ids and status only, **no image column exists**) | With the order |
+| Name, email, phone, address | Our database, to ship the prints | **Erased automatically 24 h after delivery** (`src/privacy/erase.js`) |
+| Payment | Cashfree (the card/UPI details never reach us) | Cashfree's own retention, required by law |
+
+**Check it yourself in this repo:**
+- [`prisma/schema.prisma`](prisma/schema.prisma) has no column that could hold an image.
+- [`examples/nextjs/app/api/sessions/[token]/files/[index]/route.js`](examples/nextjs/app/api/sessions/%5Btoken%5D/files/%5Bindex%5D/route.js) reads the upload into a `Buffer`, hands it to Epson, and returns. There are no `fs` writes, temp files or storage buckets.
+- [`src/browser/render.js`](src/browser/render.js) applies your edits (brightness, contrast, rotation, flip) **in your browser** before anything is sent.
+
+What we can't promise away: Epson's cloud receives each file in order to print it (under Epson's privacy policy), and printed photos are physical objects that a person packs. They are handled face-down and mailed in a plain, opaque cover.
+
 Everything that carries risk is here as small, tested modules:
 
 | Module | What it does |
@@ -12,7 +28,7 @@ Everything that carries risk is here as small, tested modules:
 | [`src/lease/slots.js`](src/lease/slots.js) | 15-minute hardware lease. Hold, book, and release are each **one atomic SQL update**, with correct IST handling |
 | [`src/payments/cashfree.js`](src/payments/cashfree.js) | Cashfree PG: order creation, server-side verification, timing-safe webhook signature check, amount check |
 | [`src/session/print-session.js`](src/session/print-session.js) | Time-boxed, hashed print tokens and an atomic "print exactly once" claim |
-| [`src/browser/render.js`](src/browser/render.js) | Bakes brightness, contrast, rotation, and flip into real pixels on a canvas before upload |
+| [`src/browser/render.js`](src/browser/render.js) | Bakes brightness, contrast, rotation, and flip into real pixels on a canvas before upload. Also composes the 3×4 in retro print on 4×6 in paper at 300 DPI |
 | [`src/privacy/erase.js`](src/privacy/erase.js) | Scheduled PII erasure after delivery |
 | [`prisma/schema.prisma`](prisma/schema.prisma) | Data model (PostgreSQL, `timestamptz` everywhere) |
 | [`examples/nextjs/`](examples/nextjs) | Next.js App Router route handlers and a scheduler that wire it all together |
@@ -120,7 +136,7 @@ To use it in a Next.js app:
 4. Authorize the printer once: open `https://your.site/api/epson/auth/start` in a browser, enter `ADMIN_SECRET`, and log in to Epson with the account that owns the printer. Register the same URL's `/api/epson/callback` as the redirect URI in the Epson developer console. Set `EPSON_EXPECTED_SERIAL` so a token for any other printer is refused.
 5. Run `examples/nextjs/scripts/scheduler.js` under PM2 next to the app.
 
-> The `examples/` handlers are reference code showing how the modules fit together. They're kept deliberately small and aren't a full app (no UI, email, or shipping). The modules in `src/` are unit-tested. The route handlers are not integration-tested here.
+> The same design runs in production at shhhh.in: its print session was verified end to end in a real browser (two photos → two jobs → completed). The `examples/` handlers are reference code showing how the modules fit together. They're kept deliberately small and aren't a full app (no UI, email, or shipping). The modules in `src/` are unit-tested. The route handlers are not integration-tested here.
 
 ---
 
@@ -136,7 +152,9 @@ To use it in a Next.js app:
 - [ ] No analytics or session replay on `/order/*` or `/session/*`. Tokens in URLs leak to third parties.
 - [ ] Escape all user input in emails and HTML responses.
 - [ ] Rate-limit order creation, lookup, and contact endpoints.
-- [ ] Epson device and refresh tokens stored like passwords (DB or a `0600` file, never in git).
+- [ ] Epson device and refresh tokens stored like passwords (DB or a `0600` file, never in git). Epson **rotates the refresh token on every refresh** (and it expires after 30 days unused). If more than one process can refresh, re-read the store before refreshing, or you'll wipe a newer token.
+- [ ] Nginx `client_max_body_size 25m`. The default of 1 MB silently breaks photo uploads.
+- [ ] A staff session cookie used on the OAuth callback must be `SameSite=Lax`, not `Strict`. The callback is a cross-site redirect from Epson, and a Strict cookie is not sent on it.
 
 ## License
 MIT
